@@ -29,7 +29,7 @@ namespace MankindGen
             switch (param.hairStyle)
             {
                 case HairStyle.Short:
-                    GenerateShortHair(builder, width, height, depth, volume);
+                    GenerateShortHair(builder, width, height, depth, volume, param.hairLength);
                     break;
                 case HairStyle.Medium:
                     GenerateMediumHair(builder, width, height, depth, volume, param.hairLength);
@@ -38,10 +38,10 @@ namespace MankindGen
                     GenerateLongHair(builder, width, height, depth, volume, param.hairLength);
                     break;
                 case HairStyle.Spiky:
-                    GenerateSpikyHair(builder, width, height, depth, volume);
+                    GenerateSpikyHair(builder, width, height, depth, volume, param.hairLength);
                     break;
                 case HairStyle.Slicked:
-                    GenerateSlickedHair(builder, width, height, depth, volume);
+                    GenerateSlickedHair(builder, width, height, depth, volume, param.hairLength);
                     break;
             }
 
@@ -51,14 +51,16 @@ namespace MankindGen
         /// <summary>
         /// 短髪（頭部を薄く覆う）
         /// </summary>
-        private static void GenerateShortHair(MeshBuilder builder, float width, float height, float depth, float volume)
+        private static void GenerateShortHair(MeshBuilder builder, float width, float height, float depth, float volume, float length)
         {
             float hairOffset = 0.01f * volume;
             float topY = height * 0.5f + hairOffset;
+            // lengthで短髪の下端位置を調整（0.0で耳上、1.0で耳下まで）
+            float bottomExtend = length * 0.08f;
 
             // 頭頂部を覆うキャップ形状
             int segments = 8;
-            float[] yLevels = { topY + 0.02f, height * 0.35f, height * 0.15f };
+            float[] yLevels = { topY + 0.02f, height * 0.35f, height * 0.15f - bottomExtend };
             float[] widthFactors = { 0.5f, 0.95f, 1.0f };
             float[] depthFactors = { 0.6f, 0.9f, 0.95f };
 
@@ -259,10 +261,11 @@ namespace MankindGen
         /// <summary>
         /// スパイキーヘア（PS1らしい尖った髪）
         /// </summary>
-        private static void GenerateSpikyHair(MeshBuilder builder, float width, float height, float depth, float volume)
+        private static void GenerateSpikyHair(MeshBuilder builder, float width, float height, float depth, float volume, float length)
         {
             float hairOffset = 0.01f * volume;
-            float spikeHeight = 0.06f * volume;
+            // lengthでスパイクの高さを調整
+            float spikeHeight = 0.04f * volume + length * 0.04f;
 
             // ベース部分
             int segments = 8;
@@ -330,15 +333,17 @@ namespace MankindGen
         /// <summary>
         /// オールバック（後ろに流した髪）
         /// </summary>
-        private static void GenerateSlickedHair(MeshBuilder builder, float width, float height, float depth, float volume)
+        private static void GenerateSlickedHair(MeshBuilder builder, float width, float height, float depth, float volume, float length)
         {
             float hairOffset = 0.01f * volume;
+            // lengthで後ろ髪の長さを調整
+            float backExtend = length * 0.1f;
 
             int segments = 8;
-            float[] yLevels = { height * 0.52f, height * 0.4f, height * 0.2f, height * 0.0f, -height * 0.15f };
+            float[] yLevels = { height * 0.52f, height * 0.4f, height * 0.2f, height * 0.0f, -height * 0.15f - backExtend };
             float[] widthFactors = { 0.6f, 0.9f, 1.0f, 0.95f, 0.85f };
-            float[] depthFactors = { 0.7f, 0.95f, 1.05f, 1.1f, 1.0f };
-            float[] zOffsets = { -0.02f, -0.01f, 0f, 0.01f, 0.02f };
+            float[] depthFactors = { 0.7f, 0.95f, 1.05f, 1.1f, 1.0f + length * 0.1f };
+            float[] zOffsets = { -0.02f, -0.01f, 0f, 0.01f, 0.02f - backExtend * 0.3f };
 
             int[][] levelVertices = new int[yLevels.Length][];
 

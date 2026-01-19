@@ -17,19 +17,11 @@ namespace MankindGen
 
         private MaterialManager materialManager;
 
-        // 各パーツの位置オフセット（メートル）
-        private const float HEAD_Y_OFFSET = 1.55f;
-        private const float NECK_Y_OFFSET = 1.45f;
-        private const float UPPER_BODY_Y_OFFSET = 1.15f;
-        private const float LOWER_BODY_Y_OFFSET = 0.85f;
-        private const float SHOULDER_X_OFFSET = 0.18f;
-        private const float HIP_X_OFFSET = 0.09f;
-        private const float UPPER_ARM_Y_OFFSET = 1.35f;
-        private const float ELBOW_Y_OFFSET = 1.10f;
-        private const float WRIST_Y_OFFSET = 0.85f;
-        private const float THIGH_Y_OFFSET = 0.65f;
-        private const float KNEE_Y_OFFSET = 0.40f;
-        private const float ANKLE_Y_OFFSET = 0.08f;
+        // 基本サイズ定数（メートル単位）
+        private const float BASE_TORSO_HEIGHT = 0.55f;
+        private const float BASE_HEAD_HEIGHT = 0.22f;
+        private const float BASE_ARM_LENGTH = 0.55f;
+        private const float BASE_LEG_LENGTH = 0.85f;
 
         private void Start()
         {
@@ -57,37 +49,67 @@ namespace MankindGen
             generatedModel.transform.localPosition = Vector3.zero;
             generatedModel.transform.localRotation = Quaternion.identity;
 
+            // サイズ計算
             float heightScale = parameters.height;
+            float torsoHeight = BASE_TORSO_HEIGHT * parameters.torsoLength * heightScale;
+            float upperTorsoHeight = torsoHeight * 0.55f;
+            float lowerTorsoHeight = torsoHeight * 0.35f;
+            float headHeight = BASE_HEAD_HEIGHT * parameters.headHeight;
+            float neckHeight = 0.06f * heightScale;
+
+            float upperArmLength = BASE_ARM_LENGTH * 0.45f * parameters.armLength * heightScale;
+            float forearmLength = BASE_ARM_LENGTH * 0.45f * parameters.armLength * heightScale;
+            float handLength = 0.08f * heightScale;
+
+            float thighLength = BASE_LEG_LENGTH * 0.45f * parameters.legLength * heightScale;
+            float calfLength = BASE_LEG_LENGTH * 0.45f * parameters.legLength * heightScale;
+            float footHeight = 0.04f * heightScale;
+
+            // 下から上へ積み上げて位置を計算
+            float groundY = 0f;
+
+            // 足 → ふくらはぎ → 太もも → 下半身 → 上半身 → 首 → 頭
+            float footY = groundY + footHeight * 0.3f;
+            float calfY = groundY + footHeight + calfLength * 0.5f;
+            float thighY = groundY + footHeight + calfLength + thighLength * 0.5f;
+            float lowerBodyY = groundY + footHeight + calfLength + thighLength + lowerTorsoHeight * 0.5f;
+            float upperBodyY = lowerBodyY + lowerTorsoHeight * 0.5f + upperTorsoHeight * 0.5f;
+            float neckY = upperBodyY + upperTorsoHeight * 0.5f + neckHeight * 0.5f;
+            float headY = neckY + neckHeight * 0.5f + headHeight * 0.5f;
+
+            // 上半身
+            CreateBodyPart("UpperBody", BodyMeshGenerator.GenerateUpperBody(parameters),
+                materialManager.UpperClothingMaterial,
+                new Vector3(0, upperBodyY, 0));
+
+            // 下半身
+            CreateBodyPart("LowerBody", BodyMeshGenerator.GenerateLowerBody(parameters),
+                materialManager.LowerClothingMaterial,
+                new Vector3(0, lowerBodyY, 0));
+
+            // 首
+            CreateBodyPart("Neck", BodyMeshGenerator.GenerateNeck(parameters),
+                materialManager.SkinMaterial,
+                new Vector3(0, neckY, 0));
 
             // 頭部
-            CreateBodyPart("Head", HeadMeshGenerator.Generate(parameters), materialManager.FaceMaterial,
-                new Vector3(0, HEAD_Y_OFFSET * heightScale, 0));
+            CreateBodyPart("Head", HeadMeshGenerator.Generate(parameters),
+                materialManager.FaceMaterial,
+                new Vector3(0, headY, 0));
 
             // 髪
             Mesh hairMesh = HairMeshGenerator.Generate(parameters);
             if (hairMesh != null)
             {
                 CreateBodyPart("Hair", hairMesh, materialManager.HairMaterial,
-                    new Vector3(0, HEAD_Y_OFFSET * heightScale, 0));
+                    new Vector3(0, headY, 0));
             }
 
-            // 首
-            CreateBodyPart("Neck", BodyMeshGenerator.GenerateNeck(parameters), materialManager.SkinMaterial,
-                new Vector3(0, NECK_Y_OFFSET * heightScale, 0));
-
-            // 上半身
-            CreateBodyPart("UpperBody", BodyMeshGenerator.GenerateUpperBody(parameters), materialManager.UpperClothingMaterial,
-                new Vector3(0, UPPER_BODY_Y_OFFSET * heightScale, 0));
-
-            // 下半身
-            CreateBodyPart("LowerBody", BodyMeshGenerator.GenerateLowerBody(parameters), materialManager.LowerClothingMaterial,
-                new Vector3(0, LOWER_BODY_Y_OFFSET * heightScale, 0));
-
             // 腕（左右）
-            GenerateArms(heightScale);
+            GenerateArms(upperBodyY, upperTorsoHeight);
 
             // 脚（左右）
-            GenerateLegs(heightScale);
+            GenerateLegs(footY, calfY, thighY, footHeight, calfLength, thighLength);
         }
 
         /// <summary>
@@ -112,69 +134,84 @@ namespace MankindGen
         /// <summary>
         /// 腕を生成
         /// </summary>
-        private void GenerateArms(float heightScale)
+        private void GenerateArms(float upperBodyY, float upperTorsoHeight)
         {
-            float shoulderX = SHOULDER_X_OFFSET * parameters.shoulderWidth;
+            float heightScale = parameters.height;
+            float upperArmLength = BASE_ARM_LENGTH * 0.45f * parameters.armLength * heightScale;
+            float forearmLength = BASE_ARM_LENGTH * 0.45f * parameters.armLength * heightScale;
+            float handLength = 0.08f * heightScale;
+
+            // 肩の位置（上半身上部）
+            float shoulderY = upperBodyY + upperTorsoHeight * 0.35f;
+            float shoulderX = 0.20f * parameters.shoulderWidth;
+
+            // 腕は肩から下へ
+            float upperArmY = shoulderY - upperArmLength * 0.5f;
+            float elbowY = shoulderY - upperArmLength;
+            float forearmY = elbowY - forearmLength * 0.5f;
+            float wristY = elbowY - forearmLength;
+            float handY = wristY - handLength * 0.4f;
 
             // 左腕
             CreateBodyPart("LeftUpperArm", LimbMeshGenerator.GenerateUpperArm(parameters, true),
                 GetArmMaterial(true),
-                new Vector3(-shoulderX, UPPER_ARM_Y_OFFSET * heightScale, 0));
+                new Vector3(-shoulderX, upperArmY, 0));
 
             CreateBodyPart("LeftForearm", LimbMeshGenerator.GenerateForearm(parameters, true),
                 GetArmMaterial(false),
-                new Vector3(-shoulderX, ELBOW_Y_OFFSET * heightScale, 0));
+                new Vector3(-shoulderX, forearmY, 0));
 
             CreateBodyPart("LeftHand", LimbMeshGenerator.GenerateHand(parameters, true),
                 materialManager.SkinMaterial,
-                new Vector3(-shoulderX, WRIST_Y_OFFSET * heightScale, 0));
+                new Vector3(-shoulderX, handY, 0));
 
             // 右腕
             CreateBodyPart("RightUpperArm", LimbMeshGenerator.GenerateUpperArm(parameters, false),
                 GetArmMaterial(true),
-                new Vector3(shoulderX, UPPER_ARM_Y_OFFSET * heightScale, 0));
+                new Vector3(shoulderX, upperArmY, 0));
 
             CreateBodyPart("RightForearm", LimbMeshGenerator.GenerateForearm(parameters, false),
                 GetArmMaterial(false),
-                new Vector3(shoulderX, ELBOW_Y_OFFSET * heightScale, 0));
+                new Vector3(shoulderX, forearmY, 0));
 
             CreateBodyPart("RightHand", LimbMeshGenerator.GenerateHand(parameters, false),
                 materialManager.SkinMaterial,
-                new Vector3(shoulderX, WRIST_Y_OFFSET * heightScale, 0));
+                new Vector3(shoulderX, handY, 0));
         }
 
         /// <summary>
         /// 脚を生成
         /// </summary>
-        private void GenerateLegs(float heightScale)
+        private void GenerateLegs(float footY, float calfY, float thighY,
+            float footHeight, float calfLength, float thighLength)
         {
-            float hipX = HIP_X_OFFSET * parameters.hipWidth;
+            float hipX = 0.08f * parameters.hipWidth;
 
             // 左脚
             CreateBodyPart("LeftThigh", LimbMeshGenerator.GenerateThigh(parameters, true),
                 materialManager.LowerClothingMaterial,
-                new Vector3(-hipX, THIGH_Y_OFFSET * heightScale, 0));
+                new Vector3(-hipX, thighY, 0));
 
             CreateBodyPart("LeftCalf", LimbMeshGenerator.GenerateCalf(parameters, true),
                 GetLegMaterial(),
-                new Vector3(-hipX, KNEE_Y_OFFSET * heightScale, 0));
+                new Vector3(-hipX, calfY, 0));
 
             CreateBodyPart("LeftFoot", LimbMeshGenerator.GenerateFoot(parameters, true),
                 materialManager.ShoeMaterial,
-                new Vector3(-hipX, ANKLE_Y_OFFSET * heightScale, 0));
+                new Vector3(-hipX, footY, 0));
 
             // 右脚
             CreateBodyPart("RightThigh", LimbMeshGenerator.GenerateThigh(parameters, false),
                 materialManager.LowerClothingMaterial,
-                new Vector3(hipX, THIGH_Y_OFFSET * heightScale, 0));
+                new Vector3(hipX, thighY, 0));
 
             CreateBodyPart("RightCalf", LimbMeshGenerator.GenerateCalf(parameters, false),
                 GetLegMaterial(),
-                new Vector3(hipX, KNEE_Y_OFFSET * heightScale, 0));
+                new Vector3(hipX, calfY, 0));
 
             CreateBodyPart("RightFoot", LimbMeshGenerator.GenerateFoot(parameters, false),
                 materialManager.ShoeMaterial,
-                new Vector3(hipX, ANKLE_Y_OFFSET * heightScale, 0));
+                new Vector3(hipX, footY, 0));
         }
 
         /// <summary>
