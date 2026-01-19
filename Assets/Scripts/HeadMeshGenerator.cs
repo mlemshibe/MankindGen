@@ -23,18 +23,52 @@ namespace MankindGen
             float height = BASE_HEAD_HEIGHT * param.headHeight;
             float depth = BASE_HEAD_DEPTH * param.headDepth;
 
-            // 頭部は8角形ベースの輪郭を持つ
-            // 上から: 頭頂部、額、目の高さ、頬、顎
-            float[] yLevels = { height * 0.5f, height * 0.3f, height * 0.1f, -height * 0.15f, -height * 0.4f, -height * 0.5f };
+            // 頭部の輪郭レベル（上から下）
+            // 頭頂、額上、額、目、頬上、頬、顎上、顎先
+            float[] yLevels = {
+                height * 0.5f,      // 頭頂
+                height * 0.38f,     // 額上
+                height * 0.25f,     // 額
+                height * 0.08f,     // 目の高さ
+                -height * 0.08f,    // 頬上
+                -height * 0.22f,    // 頬（エラ位置）
+                -height * 0.38f,    // 顎上
+                -height * 0.5f      // 顎先
+            };
 
-            // 各レベルでの幅と奥行きの係数
-            float[] widthFactors = { 0.6f, 0.95f, 1.0f, 0.9f, 0.5f * (0.5f + param.jawWidth * 0.5f), 0.2f + param.chinPointiness * 0.15f };
-            float[] depthFactors = { 0.7f, 0.95f, 1.0f, 0.95f, 0.8f, 0.5f };
+            // jawWidthでエラの張り具合を制御（0=細い、1=張っている）
+            float jawFactor = param.jawWidth;
+            // chinPointinessで顎の尖り具合（0=丸い、1=尖っている）
+            float chinFactor = param.chinPointiness;
+
+            // 各レベルでの幅係数（エラと顎の形状を個性的に）
+            float[] widthFactors = {
+                0.55f,                                          // 頭頂
+                0.85f,                                          // 額上
+                0.95f,                                          // 額
+                1.0f,                                           // 目
+                0.95f + jawFactor * 0.08f,                      // 頬上
+                0.75f + jawFactor * 0.25f,                      // 頬（エラ）- jawWidthで大きく変化
+                0.45f + jawFactor * 0.15f - chinFactor * 0.1f, // 顎上
+                0.15f + (1f - chinFactor) * 0.15f              // 顎先 - chinPointinessで変化
+            };
+
+            // 各レベルでの奥行き係数
+            float[] depthFactors = {
+                0.65f,                          // 頭頂
+                0.88f,                          // 額上
+                0.95f,                          // 額
+                1.0f,                           // 目
+                0.98f,                          // 頬上
+                0.85f + jawFactor * 0.1f,       // 頬
+                0.65f,                          // 顎上
+                0.35f + (1f - chinFactor) * 0.1f // 顎先
+            };
 
             // プロファイル角度による前後の調整
             float profileOffset = param.faceProfileAngle * depth * 0.3f;
 
-            // 頭部の輪郭を構築（8セグメント）
+            // 頭部の輪郭を構築（8セグメント - PS1らしい角ばり）
             int segments = 8;
             int[][] levelVertices = new int[yLevels.Length][];
 
@@ -46,17 +80,37 @@ namespace MankindGen
                 float d = depth * depthFactors[level];
 
                 // 前面のオフセット（プロファイル）
-                float faceOffset = (level >= 1 && level <= 4) ? profileOffset : 0;
+                float faceOffset = (level >= 2 && level <= 6) ? profileOffset : 0;
 
                 for (int seg = 0; seg < segments; seg++)
                 {
                     float angle = (seg / (float)segments) * Mathf.PI * 2f - Mathf.PI * 0.5f;
+
+                    // 基本形状
                     float x = Mathf.Cos(angle) * w * 0.5f;
                     float z = Mathf.Sin(angle) * d * 0.5f;
 
+                    // エラ部分（横向き頂点）を強調
+                    if (level >= 4 && level <= 6)
+                    {
+                        // 横向きの頂点（angle ≈ 0 or π）でエラを強調
+                        float sideInfluence = Mathf.Abs(Mathf.Cos(angle));
+                        if (sideInfluence > 0.7f)
+                        {
+                            float elaBonus = jawFactor * 0.015f * sideInfluence;
+                            x += Mathf.Sign(x) * elaBonus;
+                        }
+                    }
+
                     // 前面寄りの頂点にプロファイルオフセットを適用
                     if (z > 0)
-                        z += faceOffset * (z / (d * 0.5f));
+                        z += faceOffset * (z / (d * 0.5f + 0.001f));
+
+                    // 顎部分を前に出す（角ばった顎）
+                    if (level >= 6 && z > 0)
+                    {
+                        z += chinFactor * 0.01f;
+                    }
 
                     // UV: 顔正面を中央に配置
                     float u = (angle + Mathf.PI * 0.5f) / (Mathf.PI * 2f);
@@ -83,7 +137,7 @@ namespace MankindGen
             }
 
             // 頭頂部を閉じる
-            int topCenter = builder.AddVertex(new Vector3(0, height * 0.5f + 0.01f, 0), new Vector2(0.5f, 1f));
+            int topCenter = builder.AddVertex(new Vector3(0, height * 0.5f + 0.005f, -depth * 0.05f), new Vector2(0.5f, 1f));
             for (int seg = 0; seg < segments; seg++)
             {
                 int nextSeg = (seg + 1) % segments;
@@ -91,7 +145,8 @@ namespace MankindGen
             }
 
             // 顎の底を閉じる
-            int bottomCenter = builder.AddVertex(new Vector3(0, -height * 0.5f - 0.01f, depth * 0.1f), new Vector2(0.5f, 0f));
+            float chinZ = depth * (0.05f + chinFactor * 0.08f);
+            int bottomCenter = builder.AddVertex(new Vector3(0, -height * 0.5f - 0.005f, chinZ), new Vector2(0.5f, 0f));
             for (int seg = 0; seg < segments; seg++)
             {
                 int nextSeg = (seg + 1) % segments;
@@ -109,17 +164,17 @@ namespace MankindGen
         /// </summary>
         private static void AddNose(MeshBuilder builder, HumanParameters param, float headHeight, float headDepth)
         {
-            float noseLength = 0.03f * param.noseLength;
-            float noseWidth = 0.025f * param.noseWidth;
-            float noseHeight = 0.04f * param.noseLength;
+            float noseLength = 0.025f * param.noseLength;
+            float noseWidth = 0.022f * param.noseWidth;
+            float noseHeight = 0.035f * param.noseLength;
 
             // 鼻の位置（顔の中央やや下）
-            float noseY = headHeight * (param.noseHeight * 0.2f - 0.1f);
-            float noseZ = headDepth * 0.5f;
+            float noseY = headHeight * (param.noseHeight * 0.15f - 0.05f);
+            float noseZ = headDepth * 0.48f;
 
             // 鼻の頂点
             Vector3 noseTip = new Vector3(0, noseY - noseHeight * 0.3f, noseZ + noseLength);
-            Vector3 noseTop = new Vector3(0, noseY + noseHeight * 0.5f, noseZ + noseLength * 0.3f);
+            Vector3 noseTop = new Vector3(0, noseY + noseHeight * 0.5f, noseZ + noseLength * 0.4f);
             Vector3 noseLeftBase = new Vector3(-noseWidth * 0.5f, noseY - noseHeight * 0.5f, noseZ);
             Vector3 noseRightBase = new Vector3(noseWidth * 0.5f, noseY - noseHeight * 0.5f, noseZ);
             Vector3 noseLeftTop = new Vector3(-noseWidth * 0.3f, noseY + noseHeight * 0.3f, noseZ);
@@ -143,25 +198,8 @@ namespace MankindGen
             // 鼻の側面（右）
             builder.AddTriFace(noseRightTop, noseRightBase, noseTip, uvRightTop, uvRightBase, uvTip);
 
-            // 鼻の底面（オプション、見えにくい）
+            // 鼻の底面
             builder.AddTriFace(noseTip, noseRightBase, noseLeftBase, uvTip, uvRightBase, uvLeftBase);
-
-            // 鼻梁
-            builder.AddQuadFace(noseLeftTop, noseTop, noseRightTop, noseLeftTop,
-                new Vector2(0, 0), new Vector2(1, 1));
-        }
-
-        /// <summary>
-        /// 顔用UV座標を取得（テクスチャ上の目・鼻・口位置は固定）
-        /// </summary>
-        public static Vector2 GetFaceUV(float headX, float headY, float headWidth, float headHeight)
-        {
-            // 顔の正面部分をテクスチャの中央に配置
-            // headX: -0.5 to 0.5 (左右)
-            // headY: -0.5 to 0.5 (上下)
-            float u = 0.5f + headX;
-            float v = 0.5f + headY;
-            return new Vector2(u, v);
         }
     }
 }
